@@ -8,7 +8,42 @@ from transformers import (
     BitsAndBytesConfig,
 )
 import model_management
+
+os.environ["FORCE_QWENVL_VIDEO_READER"] = "decord"
 from qwen_vl_utils import process_vision_info
+from pathlib import Path
+from comfy.comfy_types import IO
+from comfy_api.input import VideoInput
+
+
+def get_video_metadata(video: VideoInput, seed) -> dict:
+    metadata = {"uri": "", "max_pixels": 0, "fps": 0.0}
+    components = video.get_components()
+    video_temp_path = Path(folder_paths.temp_directory)
+    video_path = video_temp_path / f"temp_video_{seed}.mp4"
+
+    try:
+        # max_pixels
+        image = components.images
+        width = image.shape[2]
+        height = image.shape[1]
+        metadata["max_pixels"] = width * height
+
+        # fps
+        metadata["fps"] = float(components.frame_rate)
+
+        # uri(use temp video)
+        video.save_to(
+            os.path.join(video_path),
+            format="mp4",
+            codec="h264",
+        )
+        metadata["uri"] = f"{video_path.as_posix()}"
+
+    except Exception as e:
+        print(f"Error: {str(e)}")
+
+    return metadata
 
 
 class Qwen2_VQA:
@@ -78,7 +113,8 @@ class Qwen2_VQA:
             },
             "optional": {
                 "source_path": ("PATH",),
-                "image": ("IMAGE",)
+                "image": ("IMAGE",),
+                "video": (IO.VIDEO,)
             }
         }
 
@@ -99,6 +135,7 @@ class Qwen2_VQA:
         quantization,
         source_path=None,
         image=None,  # add image parameter
+        video=None,
         attention="eager",
     ):
         if seed != -1:
@@ -151,6 +188,8 @@ class Qwen2_VQA:
             pil_image.save(temp_path)
 
         with torch.no_grad():
+            video_meta = get_video_metadata(video, seed)
+            fps = 1.0
             if source_path:
                 messages = [
                     {
@@ -161,6 +200,26 @@ class Qwen2_VQA:
                         "role": "user",
                         "content": source_path
                         + [
+                            {"type": "text", "text": text},
+                        ],
+                    }
+                ]
+            elif video:
+                fps = video_meta["fps"]
+                messages = [
+                    {
+                        "role": "system",
+                        "content": "You are QwenVL, you are a helpful assistant expert in turning images into words.",
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "video",
+                                "video": video_meta["uri"],
+                                "max_pixels": video_meta["max_pixels"],
+                                "fps": video_meta["fps"],
+                            },
                             {"type": "text", "text": text},
                         ],
                     }
@@ -199,6 +258,7 @@ class Qwen2_VQA:
                 text=[text],
                 images=image_inputs,
                 videos=video_inputs,
+                fps=fps,
                 padding=True,
                 return_tensors="pt",
             )
