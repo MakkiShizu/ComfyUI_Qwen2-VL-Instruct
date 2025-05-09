@@ -188,8 +188,6 @@ class Qwen2_VQA:
             pil_image.save(temp_path)
 
         with torch.no_grad():
-            video_meta = get_video_metadata(video, seed)
-            fps = 1.0
             if source_path:
                 messages = [
                     {
@@ -205,7 +203,7 @@ class Qwen2_VQA:
                     }
                 ]
             elif video:
-                fps = video_meta["fps"]
+                video_meta = get_video_metadata(video, seed)
                 messages = [
                     # {
                     #     "role": "system",
