@@ -207,17 +207,18 @@ class Qwen2_VQA:
             elif video:
                 fps = video_meta["fps"]
                 messages = [
-                    {
-                        "role": "system",
-                        "content": "You are QwenVL, you are a helpful assistant expert in turning images into words.",
-                    },
+                    # {
+                    #     "role": "system",
+                    #     "content": "You are QwenVL, you are a helpful assistant expert in turning images into words.",
+                    # },
                     {
                         "role": "user",
                         "content": [
                             {
                                 "type": "video",
                                 "video": video_meta["uri"],
-                                "max_pixels": video_meta["max_pixels"],
+                                "min_pixels": min_pixels,
+                                "max_pixels": max_pixels,
                                 "fps": video_meta["fps"],
                             },
                             {"type": "text", "text": text},
@@ -253,14 +254,16 @@ class Qwen2_VQA:
             text = self.processor.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True
             )
-            image_inputs, video_inputs = process_vision_info(messages)
+            image_inputs, video_inputs, video_kwargs = process_vision_info(
+                messages, return_video_kwargs=True
+            )
             inputs = self.processor(
                 text=[text],
                 images=image_inputs,
                 videos=video_inputs,
-                fps=fps,
                 padding=True,
                 return_tensors="pt",
+                **video_kwargs,
             )
             inputs = inputs.to(self.device)
             # Inference: Generation of the output
